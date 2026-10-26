@@ -1,0 +1,536 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MOA Dial</title>
+<meta name="description" content="Offline ballistic calculator: rangefinder distance and angle in, MOA and scope clicks out.">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="MOA Dial">
+<meta name="theme-color" content="#151a16">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="manifest" href="manifest.json">
+<style>
+:root {
+  --bg: #151a16;
+  --panel: #1f2620;
+  --panel-2: #283029;
+  --line: #3a443b;
+  --text: #eef0ea;
+  --muted: #a3ab9f;
+  --accent: #e67e22;
+  --accent-ink: #1a1206;
+  --up: #7fd18b;
+  --down: #f0a35e;
+  --warn: #f2c14e;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; background: var(--bg); color: var(--text); }
+body {
+  font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  padding: env(safe-area-inset-top) 0 calc(76px + env(safe-area-inset-bottom));
+  -webkit-text-size-adjust: 100%;
+}
+header {
+  padding: 14px 16px 6px;
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+}
+header h1 { font-size: 20px; margin: 0; letter-spacing: .02em; }
+header .rifle-name { color: var(--muted); font-size: 14px; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
+main { padding: 0 16px; max-width: 560px; margin: 0 auto; }
+section[hidden] { display: none; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px; margin: 12px 0; }
+.card h2 { font-size: 15px; margin: 0 0 10px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+label { display: block; font-size: 14px; color: var(--muted); margin: 10px 0 4px; }
+.row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.row > div { min-width: 0; }
+input, select {
+  width: 100%; font: inherit; font-size: 20px; color: var(--text);
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px;
+  padding: 12px; -webkit-appearance: none; appearance: none;
+}
+select { font-size: 17px; background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%); background-position: calc(100% - 18px) 55%, calc(100% - 12px) 55%; background-size: 6px 6px; background-repeat: no-repeat; padding-right: 30px; }
+input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+input.big { font-size: 34px; font-weight: 700; text-align: center; padding: 14px 8px; }
+.seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; background: var(--panel-2); border-radius: 10px; padding: 4px; border: 1px solid var(--line); }
+.seg button { font: inherit; font-size: 14px; color: var(--muted); background: transparent; border: 0; border-radius: 7px; padding: 9px 4px; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); font-weight: 700; }
+.hint { font-size: 13px; color: var(--muted); margin-top: 6px; }
+.result { text-align: center; padding: 18px 10px; }
+.result .dir { font-size: 22px; font-weight: 800; letter-spacing: .1em; }
+.result .dir.up { color: var(--up); }
+.result .dir.down { color: var(--down); }
+.result .moa { font-size: 56px; font-weight: 800; line-height: 1.05; font-variant-numeric: tabular-nums; }
+.result .moa small { font-size: 22px; color: var(--muted); font-weight: 600; }
+.result .clicks { font-size: 30px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.result .empty { color: var(--muted); font-size: 16px; padding: 24px 0; }
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; }
+.stats div { background: var(--panel-2); border-radius: 10px; padding: 8px 4px; }
+.stats b { display: block; font-size: 18px; font-variant-numeric: tabular-nums; }
+.stats span { font-size: 12px; color: var(--muted); }
+.warn { color: var(--warn); font-size: 14px; margin-top: 10px; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th, td { padding: 9px 6px; text-align: right; border-bottom: 1px solid var(--line); }
+th { color: var(--muted); font-size: 12px; font-weight: 600; text-transform: uppercase; }
+td:first-child, th:first-child { text-align: left; }
+td.clk { font-weight: 700; }
+.btn { display: block; width: 100%; font: inherit; font-size: 17px; font-weight: 700; border-radius: 12px; padding: 14px; border: 1px solid var(--line); background: var(--panel-2); color: var(--text); margin-top: 10px; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.btn.danger { color: #f08a7e; }
+.rifle-list button { display: flex; justify-content: space-between; align-items: center; width: 100%; text-align: left; font: inherit; color: var(--text); background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-top: 8px; }
+.rifle-list button.active { border-color: var(--accent); }
+.rifle-list button > span:last-child { white-space: nowrap; margin-left: 8px; }
+.rifle-list small { color: var(--muted); display: block; font-size: 13px; }
+nav {
+  position: fixed; left: 0; right: 0; bottom: 0; display: grid; grid-template-columns: repeat(3, 1fr);
+  background: var(--panel); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom);
+}
+nav button { font: inherit; font-size: 15px; color: var(--muted); background: none; border: 0; padding: 16px 4px; }
+nav button[aria-current="page"] { color: var(--accent); font-weight: 700; }
+.toast { position: fixed; left: 50%; bottom: calc(90px + env(safe-area-inset-bottom)); transform: translateX(-50%); background: var(--accent); color: var(--accent-ink); font-weight: 700; padding: 10px 18px; border-radius: 20px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+.toast.show { opacity: 1; }
+details { margin-top: 8px; }
+summary { color: var(--muted); font-size: 14px; padding: 6px 0; }
+p.note { font-size: 14px; color: var(--muted); margin: 8px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>MOA Dial</h1>
+  <div class="rifle-name" id="hdrRifle"></div>
+</header>
+
+<main>
+<!-- ============ SHOT ============ -->
+<section id="tab-shot">
+  <div class="card">
+    <h2>Rangefinder reading</h2>
+    <label for="dist">Line-of-sight distance (yards)</label>
+    <input id="dist" class="big" type="number" inputmode="decimal" placeholder="0" min="0" max="2000">
+
+    <label>Slope input</label>
+    <div class="seg" id="slopeMode" role="group" aria-label="Slope input">
+      <button type="button" data-v="flat" aria-pressed="false">Flat</button>
+      <button type="button" data-v="angle" aria-pressed="false">Angle °</button>
+      <button type="button" data-v="height" aria-pressed="true">Height (M1)</button>
+    </div>
+
+    <div id="angleBox" hidden>
+      <label for="angle">Angle (degrees)</label>
+      <div class="row">
+        <input id="angle" type="number" inputmode="decimal" placeholder="0">
+        <div class="seg" id="angleSign" style="grid-template-columns:1fr 1fr">
+          <button type="button" data-v="1" aria-pressed="true">Up ▲</button>
+          <button type="button" data-v="-1" aria-pressed="false">Down ▼</button>
+        </div>
+      </div>
+    </div>
+    <div id="heightBox" hidden>
+      <label for="height">Height difference (the number under the distance)</label>
+      <div class="row">
+        <input id="height" type="number" inputmode="decimal" placeholder="0">
+        <select id="heightUnit"><option value="yd">yards</option><option value="ft">feet</option><option value="m">meters</option></select>
+      </div>
+      <div class="seg" id="heightSign" style="grid-template-columns:1fr 1fr;margin-top:8px">
+        <button type="button" data-v="1" aria-pressed="true">Target above ▲</button>
+        <button type="button" data-v="-1" aria-pressed="false">Target below ▼</button>
+      </div>
+    </div>
+    <p class="hint" id="slopeHint">Flat: use for level shots, or enter the M3 slope-adjusted (horizontal) distance here.</p>
+  </div>
+
+  <div class="card result" id="result" aria-live="polite">
+    <div class="empty">Enter a distance</div>
+  </div>
+</section>
+
+<!-- ============ CHART ============ -->
+<section id="tab-chart" hidden>
+  <div class="card">
+    <h2>Drop chart (flat ground)</h2>
+    <div class="row">
+      <div><label for="chartStep">Step</label>
+        <select id="chartStep"><option value="25">25 yd</option><option value="50" selected>50 yd</option><option value="100">100 yd</option></select></div>
+      <div><label for="chartMax">Out to</label>
+        <select id="chartMax"><option>500</option><option>600</option><option selected>800</option><option>1000</option><option>1200</option></select></div>
+    </div>
+    <table style="margin-top:12px">
+      <thead><tr><th>Yards</th><th>MOA</th><th>Clicks</th><th>Drop in</th><th>fps</th></tr></thead>
+      <tbody id="chartBody"></tbody>
+    </table>
+    <p class="note">Up is positive. Screenshot this page as a paper backup.</p>
+  </div>
+</section>
+
+<!-- ============ RIFLES ============ -->
+<section id="tab-rifle" hidden>
+  <div class="card">
+    <h2>Saved rifles</h2>
+    <div class="rifle-list" id="rifleList"></div>
+    <button class="btn" type="button" id="newRifle">+ Add another rifle</button>
+  </div>
+
+  <form class="card" id="rifleForm" autocomplete="off">
+    <h2>Rifle &amp; load</h2>
+    <label for="f_name">Name</label>
+    <input id="f_name" type="text" placeholder="e.g. 6.5 CM – 143 ELD-X" style="font-size:18px">
+
+    <div class="row">
+      <div><label for="f_mv">Muzzle velocity (fps)</label><input id="f_mv" type="number" inputmode="decimal" required></div>
+      <div><label for="f_wt">Bullet weight (gr)</label><input id="f_wt" type="number" inputmode="decimal" required></div>
+    </div>
+    <div class="row">
+      <div><label for="f_bc">Ballistic coefficient</label><input id="f_bc" type="number" inputmode="decimal" step="0.001" required></div>
+      <div><label for="f_model">Drag model</label><select id="f_model"><option value="G1">G1</option><option value="G7">G7</option></select></div>
+    </div>
+    <p class="hint">On the box or the maker's site. Use G7 if it's listed, since it's more accurate for long, sleek bullets. If not, G1 works fine.</p>
+
+    <div class="row">
+      <div><label for="f_zero">Zero distance (yd)</label><input id="f_zero" type="number" inputmode="decimal" required></div>
+      <div><label for="f_sh">Scope height (in)</label><input id="f_sh" type="number" inputmode="decimal" step="0.1" required></div>
+    </div>
+    <p class="hint">Scope height is from the center of the bore to the center of the scope. It's usually 1.5–2.0". If you're not sure, use 1.5.</p>
+    <div class="row">
+      <div><label for="f_click">Click value (MOA)</label>
+        <select id="f_click"><option value="0.25">1/4 MOA</option><option value="0.125">1/8 MOA</option><option value="0.5">1/2 MOA</option><option value="1">1 MOA</option></select></div>
+      <div></div>
+    </div>
+
+    <details id="atmoDetails">
+      <summary>Weather &amp; altitude (optional, matters past ~400 yd)</summary>
+      <div class="row">
+        <div><label for="f_temp">Temp (°F)</label><input id="f_temp" type="number" inputmode="decimal" placeholder="59"></div>
+        <div><label for="f_alt">Altitude (ft)</label><input id="f_alt" type="number" inputmode="decimal" placeholder="0"></div>
+      </div>
+      <p class="hint">Blank = standard (59°F at sea level). Enter the hunting spot's elevation. You can also change the temperature on the day.</p>
+    </details>
+
+    <button class="btn primary" type="submit">Save rifle</button>
+    <button class="btn danger" type="button" id="delRifle">Delete this rifle</button>
+  </form>
+
+  <div class="card">
+    <h2>Before you trust it</h2>
+    <p class="note">Shoot at a known distance of 400 yd or more, dialed to what the app says. If the shots hit high, lower the muzzle velocity by 15–25 fps. If they hit low, raise it. Repeat until the shots land on target. This "truing" step makes the far numbers match <em>your</em> rifle.</p>
+    <p class="note">Numbers are a starting point and don't replace confirming at the range.</p>
+  </div>
+</section>
+</main>
+
+<nav>
+  <button type="button" data-tab="shot" aria-current="page">Shot</button>
+  <button type="button" data-tab="chart">Drop chart</button>
+  <button type="button" data-tab="rifle">Rifles</button>
+</nav>
+<div class="toast" id="toast"></div>
+
+<script>
+// BEGIN SOLVER
+// Point-mass trajectory solver (imperial units: ft, s, grains).
+var Ballistics = (function () {
+  // Standard drag functions: [Mach, Cd]
+  var G1 = [[0,.2629],[.05,.2558],[.1,.2487],[.15,.2413],[.2,.2344],[.25,.2278],[.3,.2214],[.35,.2155],[.4,.2104],[.45,.2061],[.5,.2032],[.55,.2020],[.6,.2034],[.7,.2165],[.725,.2230],[.75,.2313],[.775,.2417],[.8,.2546],[.825,.2706],[.85,.2901],[.875,.3136],[.9,.3415],[.925,.3734],[.95,.4084],[.975,.4448],[1,.4805],[1.025,.5136],[1.05,.5427],[1.075,.5677],[1.1,.5883],[1.125,.6053],[1.15,.6191],[1.2,.6393],[1.25,.6518],[1.3,.6589],[1.35,.6621],[1.4,.6625],[1.45,.6607],[1.5,.6573],[1.55,.6528],[1.6,.6474],[1.65,.6413],[1.7,.6347],[1.75,.6280],[1.8,.6210],[1.85,.6141],[1.9,.6072],[1.95,.6003],[2,.5934],[2.05,.5867],[2.1,.5804],[2.15,.5743],[2.2,.5685],[2.25,.5630],[2.3,.5577],[2.35,.5527],[2.4,.5481],[2.45,.5438],[2.5,.5397],[2.6,.5325],[2.7,.5264],[2.8,.5211],[2.9,.5168],[3,.5133],[3.1,.5105],[3.2,.5084],[3.3,.5067],[3.4,.5054],[3.5,.5040],[3.6,.5030],[3.7,.5022],[3.8,.5016],[3.9,.5010],[4,.5006],[4.2,.4998],[4.4,.4995],[4.6,.4992],[4.8,.4990],[5,.4988]];
+  var G7 = [[0,.1198],[.05,.1197],[.1,.1196],[.15,.1194],[.2,.1193],[.25,.1194],[.3,.1194],[.35,.1194],[.4,.1193],[.45,.1193],[.5,.1194],[.55,.1193],[.6,.1194],[.65,.1197],[.7,.1202],[.725,.1207],[.75,.1215],[.775,.1226],[.8,.1242],[.825,.1266],[.85,.1306],[.875,.1368],[.9,.1464],[.925,.1660],[.95,.2054],[.975,.2993],[1,.3803],[1.025,.4015],[1.05,.4043],[1.075,.4034],[1.1,.4014],[1.125,.3987],[1.15,.3955],[1.2,.3884],[1.25,.3810],[1.3,.3732],[1.35,.3657],[1.4,.3580],[1.5,.3440],[1.55,.3376],[1.6,.3315],[1.65,.3260],[1.7,.3209],[1.75,.3160],[1.8,.3117],[1.85,.3078],[1.9,.3042],[1.95,.3010],[2,.2980],[2.05,.2951],[2.1,.2922],[2.15,.2892],[2.2,.2864],[2.25,.2835],[2.3,.2807],[2.35,.2779],[2.4,.2752],[2.45,.2725],[2.5,.2697],[2.55,.2670],[2.6,.2643],[2.65,.2615],[2.7,.2588],[2.75,.2561],[2.8,.2533],[2.85,.2506],[2.9,.2479],[2.95,.2451],[3,.2424],[3.1,.2368],[3.2,.2313],[3.3,.2258],[3.4,.2205],[3.5,.2154],[3.6,.2106],[3.7,.2060],[3.8,.2017],[3.9,.1975],[4,.1935],[4.2,.1861],[4.4,.1793],[4.6,.1730],[4.8,.1672],[5,.1618]];
+  var TABLES = { G1: G1, G7: G7 };
+  var GRAV = 32.174;              // ft/s^2
+  var DRAG_K = 2.08551e-4;        // rho0 * pi / (8 * 144), standard density lb/ft^3
+  var MOA_RAD = Math.PI / 180 / 60;
+
+  function cd(table, mach) {
+    if (mach <= table[0][0]) return table[0][1];
+    for (var i = 1; i < table.length; i++) {
+      if (mach <= table[i][0]) {
+        var a = table[i - 1], b = table[i];
+        return a[1] + (b[1] - a[1]) * (mach - a[0]) / (b[0] - a[0]);
+      }
+    }
+    return table[table.length - 1][1];
+  }
+
+  // Air density ratio and speed of sound from temperature (F) and altitude (ft).
+  function atmosphere(tempF, altFt) {
+    // typeof check: isFinite(null) is true, and a blank field is stored as null.
+    var alt = typeof altFt === 'number' && isFinite(altFt) ? altFt : 0;
+    var t = typeof tempF === 'number' && isFinite(tempF) ? tempF : 59 - 0.00356616 * alt;
+    var tR = t + 459.67;
+    var pRatio = Math.pow(1 - 6.8753e-6 * alt, 5.2559);
+    return { densityRatio: pRatio * 518.67 / tR, sound: 49.0223 * Math.sqrt(tR) };
+  }
+
+  // Fly a shot. x runs along the line of sight, y perpendicular to it.
+  // boreAngle = bore angle relative to LOS (rad); losAngle = incline (rad, + uphill).
+  // Calls onRange(rangeFt, y, v, t) at each requested range (ascending, ft).
+  function fly(rifle, atmo, boreAngle, losAngle, ranges, onRange) {
+    var table = TABLES[rifle.model] || G1;
+    var k = DRAG_K * atmo.densityRatio / rifle.bc;
+    var gx = -GRAV * Math.sin(losAngle), gy = -GRAV * Math.cos(losAngle);
+    var x = 0, y = -rifle.sightHeight / 12, t = 0;
+    var vx = rifle.mv * Math.cos(boreAngle), vy = rifle.mv * Math.sin(boreAngle);
+    var idx = 0, dt = 0.0005;
+    function acc(vx, vy) {
+      var v = Math.sqrt(vx * vx + vy * vy);
+      var d = k * cd(table, v / atmo.sound) * v;
+      return [gx - d * vx, gy - d * vy];
+    }
+    while (idx < ranges.length && t < 10) {
+      // RK4 step
+      var a1 = acc(vx, vy);
+      var a2 = acc(vx + a1[0] * dt / 2, vy + a1[1] * dt / 2);
+      var a3 = acc(vx + a2[0] * dt / 2, vy + a2[1] * dt / 2);
+      var a4 = acc(vx + a3[0] * dt, vy + a3[1] * dt);
+      var nvx = vx + dt / 6 * (a1[0] + 2 * a2[0] + 2 * a3[0] + a4[0]);
+      var nvy = vy + dt / 6 * (a1[1] + 2 * a2[1] + 2 * a3[1] + a4[1]);
+      var nx = x + dt / 6 * (vx + 2 * (vx + a1[0] * dt / 2) + 2 * (vx + a2[0] * dt / 2) + (vx + a3[0] * dt));
+      var ny = y + dt / 6 * (vy + 2 * (vy + a1[1] * dt / 2) + 2 * (vy + a2[1] * dt / 2) + (vy + a3[1] * dt));
+      while (idx < ranges.length && nx >= ranges[idx]) {
+        var f = (ranges[idx] - x) / (nx - x);
+        var iy = y + (ny - y) * f;
+        var ivx = vx + (nvx - vx) * f, ivy = vy + (nvy - vy) * f;
+        onRange(ranges[idx], iy, Math.sqrt(ivx * ivx + ivy * ivy), t + dt * f);
+        idx++;
+      }
+      x = nx; y = ny; vx = nvx; vy = nvy; t += dt;
+      if (vx <= 0) break;
+    }
+  }
+
+  // Bore angle (relative to LOS) that puts the bullet on the LOS at the zero range, flat ground.
+  function zeroAngle(rifle, atmo) {
+    var zf = rifle.zero * 3, lo = -0.01, hi = 0.05;
+    for (var i = 0; i < 50; i++) {
+      var mid = (lo + hi) / 2, yz = null;
+      fly(rifle, atmo, mid, 0, [zf], function (r, y) { yz = y; });
+      if (yz === null || yz < 0) lo = mid; else hi = mid;
+    }
+    return (lo + hi) / 2;
+  }
+
+  // Solve the hold/dial for a list of line-of-sight ranges (yards) at an incline (degrees).
+  function solve(rifle, rangesYd, inclineDeg) {
+    var atmo = atmosphere(rifle.temp, rifle.alt);
+    var bore = zeroAngle(rifle, atmo);
+    var los = (inclineDeg || 0) * Math.PI / 180;
+    var out = rangesYd.map(function (r) { return { range: r, reached: false }; });
+    var order = rangesYd.map(function (r, i) { return i; }).sort(function (a, b) { return rangesYd[a] - rangesYd[b]; });
+    var feet = order.map(function (i) { return Math.max(rangesYd[i], 0.01) * 3; });
+    var n = 0;
+    fly(rifle, atmo, bore, los, feet, function (rf, y, v, t) {
+      var o = out[order[n++]];
+      var dropIn = y * 12;
+      var corr = -Math.atan2(y, rf) / MOA_RAD;   // + = dial UP
+      o.reached = true;
+      o.dropIn = dropIn;
+      o.moa = corr;
+      o.clicks = Math.round(corr / rifle.click) || 0;
+      o.velocity = v;
+      o.energy = rifle.weight * v * v / 450436;
+      o.time = t;
+      o.supersonic = v > atmo.sound;
+    });
+    return out;
+  }
+
+  return { solve: solve, atmosphere: atmosphere };
+})();
+if (typeof module !== 'undefined') module.exports = Ballistics;
+// END SOLVER
+
+// ---------------- App ----------------
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var STORE = 'moadial.v1';
+
+  function load() {
+    try { var s = JSON.parse(localStorage.getItem(STORE)); if (s && s.rifles && s.rifles.length) return s; } catch (e) {}
+    return {
+      active: 0,
+      rifles: [{ name: 'My rifle (edit me)', mv: 2700, weight: 143, bc: 0.315, model: 'G7', zero: 100, sightHeight: 1.5, click: 0.25, temp: null, alt: null }],
+      shot: { slope: 'height', sign: 1, hsign: 1, hunit: 'yd', v: 2 }
+    };
+  }
+  function save() { try { localStorage.setItem(STORE, JSON.stringify(state)); } catch (e) {} }
+
+  var state = load();
+  state.shot = state.shot || { slope: 'height', sign: 1, hsign: 1, hunit: 'yd', v: 2 };
+  if (!state.shot.v) { state.shot.v = 2; state.shot.hunit = 'yd'; state.shot.slope = 'height'; save(); }
+  var editing = state.active;
+
+  function rifle() { return state.rifles[state.active] || state.rifles[0]; }
+  function num(v) { var n = parseFloat(v); return isFinite(n) ? n : null; }
+  function fmt(n, d) { var s = n.toFixed(d); return /^-0\.?0*$/.test(s) ? s.slice(1) : s; }
+  function toast(msg) { var t = $('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(function () { t.classList.remove('show'); }, 1400); }
+
+  // ---- tabs
+  document.querySelectorAll('nav button').forEach(function (b) {
+    b.addEventListener('click', function () { showTab(b.dataset.tab); });
+  });
+  function showTab(name) {
+    document.querySelectorAll('nav button').forEach(function (b) {
+      if (b.dataset.tab === name) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
+    });
+    ['shot', 'chart', 'rifle'].forEach(function (n) { $('tab-' + n).hidden = n !== name; });
+    if (name === 'chart') renderChart();
+    if (name === 'rifle') { renderRifleList(); fillForm(editing); }
+    if (name === 'shot') calc();
+    window.scrollTo(0, 0);
+  }
+
+  // ---- segmented controls
+  function seg(id, value, onChange) {
+    var el = $(id);
+    function set(v) { el.querySelectorAll('button').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.v === String(v))); }); }
+    set(value);
+    el.addEventListener('click', function (e) {
+      var b = e.target.closest('button'); if (!b) return;
+      set(b.dataset.v); onChange(b.dataset.v);
+    });
+    return set;
+  }
+  var hints = {
+    flat: 'Flat: use for level shots, or enter the M3 slope-adjusted (horizontal) distance here.',
+    angle: 'Enter the line-of-sight distance above, and the angle the rangefinder shows in slope mode.',
+    height: 'Mode 1: enter the Y distance above and the number shown under it here. Minus = target below you.'
+  };
+  function applySlope() {
+    var m = state.shot.slope;
+    $('angleBox').hidden = m !== 'angle';
+    $('heightBox').hidden = m !== 'height';
+    $('slopeHint').textContent = hints[m];
+  }
+  seg('slopeMode', state.shot.slope, function (v) { state.shot.slope = v; applySlope(); save(); calc(); });
+  var setAngleSign = seg('angleSign', state.shot.sign, function (v) { state.shot.sign = +v; save(); calc(); });
+  var setHeightSign = seg('heightSign', state.shot.hsign, function (v) { state.shot.hsign = +v; save(); calc(); });
+  $('heightUnit').value = state.shot.hunit;
+  $('heightUnit').addEventListener('change', function () { state.shot.hunit = this.value; save(); calc(); });
+  applySlope();
+  // A typed minus sign means downhill / target below; flip the toggle to match.
+  $('angle').addEventListener('input', function () { if (num(this.value) < 0) { state.shot.sign = -1; setAngleSign(-1); save(); } });
+  $('height').addEventListener('input', function () { if (num(this.value) < 0) { state.shot.hsign = -1; setHeightSign(-1); save(); } });
+  ['dist', 'angle', 'height'].forEach(function (id) { $(id).addEventListener('input', calc); });
+
+  // ---- shot calculation
+  function incline(distYd) {
+    var m = state.shot.slope;
+    if (m === 'angle') {
+      var a = num($('angle').value);
+      return a === null ? 0 : Math.min(Math.abs(a), 85) * state.shot.sign;
+    }
+    if (m === 'height') {
+      var h = num($('height').value);
+      if (h === null) return 0;
+      var hYd = Math.abs(h) / ({ ft: 3, yd: 1, m: 0.9144 })[state.shot.hunit];
+      if (hYd >= distYd) return null;
+      return Math.asin(hYd / distYd) * 180 / Math.PI * state.shot.hsign;
+    }
+    return 0;
+  }
+
+  function calc() {
+    var r = rifle();
+    $('hdrRifle').textContent = r.name;
+    var box = $('result');
+    var d = num($('dist').value);
+    if (d === null || d <= 0) { box.innerHTML = '<div class="empty">Enter a distance</div>'; return; }
+    var inc = incline(d);
+    if (inc === null) { box.innerHTML = '<div class="empty">The height can\'t be more than the distance. Check the numbers.</div>'; return; }
+    var res = Ballistics.solve(r, [d], inc)[0];
+    if (!res.reached) { box.innerHTML = '<div class="empty">Out of range for this load</div>'; return; }
+    var up = res.clicks >= 0;
+    var dirWord = res.clicks === 0 ? 'NO CHANGE' : (up ? 'DIAL UP ▲' : 'DIAL DOWN ▼');
+    var extra = '';
+    if (Math.abs(inc) >= 0.1) {
+      var flat = Ballistics.solve(r, [d], 0)[0];
+      extra += '<div class="hint">Angle ' + fmt(inc, 1) + '° · flat ground would be ' + fmt(flat.moa, 2) + ' MOA (' + flat.clicks + ' clicks)</div>';
+    }
+    if (!res.supersonic) extra += '<div class="warn">⚠ Bullet is subsonic here, so accuracy drops off.</div>';
+    if (res.energy < 1000 && r.weight >= 100) extra += '<div class="warn">⚠ Under 1,000 ft-lb, which is marginal for elk-size game.</div>';
+    box.innerHTML =
+      '<div class="dir ' + (up ? 'up' : 'down') + '">' + dirWord + '</div>' +
+      '<div class="moa">' + fmt(Math.abs(res.moa), 2) + ' <small>MOA</small></div>' +
+      '<div class="clicks">' + Math.abs(res.clicks) + ' clicks</div>' +
+      '<div class="hint">at ' + r.click + ' MOA per click</div>' +
+      '<div class="stats">' +
+        '<div><b>' + fmt(res.dropIn, 1) + '"</b><span>drop</span></div>' +
+        '<div><b>' + Math.round(res.velocity) + '</b><span>fps</span></div>' +
+        '<div><b>' + Math.round(res.energy) + '</b><span>ft-lb</span></div>' +
+      '</div>' + extra;
+  }
+
+  // ---- chart
+  function renderChart() {
+    var r = rifle(), step = +$('chartStep').value, max = +$('chartMax').value, ranges = [];
+    for (var y = step; y <= max; y += step) ranges.push(y);
+    var rows = Ballistics.solve(r, ranges, 0);
+    $('chartBody').innerHTML = rows.map(function (o) {
+      if (!o.reached) return '<tr><td>' + o.range + '</td><td colspan="4">—</td></tr>';
+      return '<tr><td>' + o.range + '</td><td>' + fmt(o.moa, 2) + '</td><td class="clk">' + o.clicks +
+        '</td><td>' + fmt(o.dropIn, 1) + '</td><td>' + Math.round(o.velocity) + '</td></tr>';
+    }).join('');
+  }
+  $('chartStep').addEventListener('change', renderChart);
+  $('chartMax').addEventListener('change', renderChart);
+
+  // ---- rifles
+  function renderRifleList() {
+    $('rifleList').innerHTML = state.rifles.map(function (r, i) {
+      return '<button type="button" data-i="' + i + '" class="' + (i === state.active ? 'active' : '') + '"><span>' +
+        escapeHtml(r.name) + '<small>' + r.mv + ' fps · ' + r.weight + ' gr · ' + r.bc + ' ' + r.model + ' · ' + r.zero + ' yd zero</small></span>' +
+        (i === state.active ? '<span style="color:var(--accent)">● In use</span>' : '<span style="color:var(--muted)">Use</span>') + '</button>';
+    }).join('');
+  }
+  $('rifleList').addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    state.active = editing = +b.dataset.i; save(); renderRifleList(); fillForm(editing); calc();
+    toast('Using ' + rifle().name);
+  });
+  function escapeHtml(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+
+  var fields = { name: 'f_name', mv: 'f_mv', weight: 'f_wt', bc: 'f_bc', model: 'f_model', zero: 'f_zero', sightHeight: 'f_sh', click: 'f_click', temp: 'f_temp', alt: 'f_alt' };
+  function fillForm(i) {
+    var r = state.rifles[i] || { name: '', mv: '', weight: '', bc: '', model: 'G1', zero: 100, sightHeight: 1.5, click: 0.25, temp: null, alt: null };
+    Object.keys(fields).forEach(function (k) { $(fields[k]).value = r[k] === null || r[k] === undefined ? '' : r[k]; });
+    $('delRifle').hidden = !(i < state.rifles.length && state.rifles.length > 1);
+    if (r.temp !== null || r.alt !== null) $('atmoDetails').open = true;
+  }
+  $('newRifle').addEventListener('click', function () {
+    editing = state.rifles.length; fillForm(editing); $('f_name').focus();
+  });
+  $('rifleForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var r = {
+      name: $('f_name').value.trim() || 'Rifle ' + (editing + 1),
+      mv: num($('f_mv').value), weight: num($('f_wt').value), bc: num($('f_bc').value),
+      model: $('f_model').value, zero: num($('f_zero').value), sightHeight: num($('f_sh').value),
+      click: num($('f_click').value), temp: num($('f_temp').value), alt: num($('f_alt').value)
+    };
+    if (!(r.mv > 300 && r.mv < 5000)) return toast('Check muzzle velocity');
+    if (!(r.bc > 0.05 && r.bc < 1.5)) return toast('Check the BC');
+    if (!(r.weight > 10)) return toast('Check bullet weight');
+    if (!(r.zero >= 10)) return toast('Check zero distance');
+    if (!(r.sightHeight >= 0 && r.sightHeight < 6)) return toast('Check scope height');
+    state.rifles[editing] = r;
+    state.active = editing;
+    save(); renderRifleList(); fillForm(editing); calc();
+    toast('Saved');
+  });
+  $('delRifle').addEventListener('click', function () {
+    if (state.rifles.length < 2) return;
+    if (!confirm('Delete "' + state.rifles[editing].name + '"?')) return;
+    state.rifles.splice(editing, 1);
+    state.active = editing = 0;
+    save(); renderRifleList(); fillForm(0); calc();
+  });
+
+  calc();
+  if (state.rifles.length === 1 && /edit me/.test(state.rifles[0].name)) showTab('rifle');
+
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+    navigator.serviceWorker.register('sw.js').catch(function () {});
+  }
+})();
+</script>
+</body>
+</html>
