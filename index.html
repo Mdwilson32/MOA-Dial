@@ -95,6 +95,10 @@ nav button[aria-current="page"] { color: var(--accent); font-weight: 700; }
 details { margin-top: 8px; }
 summary { color: var(--muted); font-size: 14px; padding: 6px 0; }
 p.note { font-size: 14px; color: var(--muted); margin: 8px 0; }
+.btn.gps { margin-top: 0; padding: 12px; font-size: 16px; }
+.cond-status { font-size: 13px; color: var(--muted); margin-top: 8px; }
+.cond-status.warn { color: var(--warn); }
+.chart-cond { font-size: 13px; color: var(--muted); margin: 0 0 4px; }
 </style>
 </head>
 <body>
@@ -145,12 +149,23 @@ p.note { font-size: 14px; color: var(--muted); margin: 8px 0; }
   <div class="card result" id="result" aria-live="polite">
     <div class="empty">Enter a distance</div>
   </div>
+
+  <div class="card" id="condCard">
+    <h2>Conditions</h2>
+    <div class="row">
+      <div><label for="c_alt">Altitude (ft)</label><input id="c_alt" type="number" inputmode="decimal" placeholder="0"></div>
+      <div><label for="c_temp">Temp (°F)</label><input id="c_temp" type="number" inputmode="decimal" placeholder="59"></div>
+    </div>
+    <button class="btn gps" type="button" id="useGps" style="margin-top:10px">📍 Use GPS altitude</button>
+    <div class="cond-status" id="condStatus"></div>
+  </div>
 </section>
 
 <!-- ============ CHART ============ -->
 <section id="tab-chart" hidden>
   <div class="card">
     <h2>Drop chart (flat ground)</h2>
+    <p class="chart-cond" id="chartCond"></p>
     <div class="row">
       <div><label for="chartStep">Step</label>
         <select id="chartStep"><option value="25">25 yd</option><option value="50" selected>50 yd</option><option value="100">100 yd</option></select></div>
@@ -199,14 +214,7 @@ p.note { font-size: 14px; color: var(--muted); margin: 8px 0; }
       <div></div>
     </div>
 
-    <details id="atmoDetails">
-      <summary>Weather &amp; altitude (optional, matters past ~400 yd)</summary>
-      <div class="row">
-        <div><label for="f_temp">Temp (°F)</label><input id="f_temp" type="number" inputmode="decimal" placeholder="59"></div>
-        <div><label for="f_alt">Altitude (ft)</label><input id="f_alt" type="number" inputmode="decimal" placeholder="0"></div>
-      </div>
-      <p class="hint">Blank = standard (59°F at sea level). Enter the hunting spot's elevation. You can also change the temperature on the day.</p>
-    </details>
+    <p class="hint">Altitude and temperature are on the Shot screen under Conditions.</p>
 
     <button class="btn primary" type="submit">Save rifle</button>
     <button class="btn danger" type="button" id="delRifle">Delete this rifle</button>
@@ -309,8 +317,10 @@ var Ballistics = (function () {
   }
 
   // Solve the hold/dial for a list of line-of-sight ranges (yards) at an incline (degrees).
-  function solve(rifle, rangesYd, inclineDeg) {
-    var atmo = atmosphere(rifle.temp, rifle.alt);
+  // cond = { temp: °F, alt: ft }; either may be null for standard conditions.
+  function solve(rifle, rangesYd, inclineDeg, cond) {
+    cond = cond || {};
+    var atmo = atmosphere(cond.temp, cond.alt);
     var bore = zeroAngle(rifle, atmo);
     var los = (inclineDeg || 0) * Math.PI / 180;
     var out = rangesYd.map(function (r) { return { range: r, reached: false }; });
@@ -347,7 +357,8 @@ if (typeof module !== 'undefined') module.exports = Ballistics;
     try { var s = JSON.parse(localStorage.getItem(STORE)); if (s && s.rifles && s.rifles.length) return s; } catch (e) {}
     return {
       active: 0,
-      rifles: [{ name: 'My rifle (edit me)', mv: 2700, weight: 143, bc: 0.315, model: 'G7', zero: 100, sightHeight: 1.5, click: 0.25, temp: null, alt: null }],
+      rifles: [{ name: 'My rifle (edit me)', mv: 2700, weight: 143, bc: 0.315, model: 'G7', zero: 100, sightHeight: 1.5, click: 0.25 }],
+      cond: { temp: null, alt: null, src: null, at: null, acc: null },
       shot: { slope: 'height', sign: 1, hsign: 1, hunit: 'yd', v: 2 }
     };
   }
@@ -356,6 +367,13 @@ if (typeof module !== 'undefined') module.exports = Ballistics;
   var state = load();
   state.shot = state.shot || { slope: 'height', sign: 1, hsign: 1, hunit: 'yd', v: 2 };
   if (!state.shot.v) { state.shot.v = 2; state.shot.hunit = 'yd'; state.shot.slope = 'height'; save(); }
+  // v4: conditions moved from each rifle to the Shot screen.
+  if (!state.cond) {
+    var old = state.rifles[state.active] || {};
+    state.cond = { temp: old.temp == null ? null : old.temp, alt: old.alt == null ? null : old.alt, src: old.alt == null ? null : 'manual', at: null, acc: null };
+    state.rifles.forEach(function (rf) { delete rf.temp; delete rf.alt; });
+    save();
+  }
   var editing = state.active;
 
   function rifle() { return state.rifles[state.active] || state.rifles[0]; }
@@ -374,7 +392,7 @@ if (typeof module !== 'undefined') module.exports = Ballistics;
     ['shot', 'chart', 'rifle'].forEach(function (n) { $('tab-' + n).hidden = n !== name; });
     if (name === 'chart') renderChart();
     if (name === 'rifle') { renderRifleList(); fillForm(editing); }
-    if (name === 'shot') calc();
+    if (name === 'shot') { renderCond(); calc(); }
     window.scrollTo(0, 0);
   }
 
@@ -436,13 +454,13 @@ if (typeof module !== 'undefined') module.exports = Ballistics;
     if (d === null || d <= 0) { box.innerHTML = '<div class="empty">Enter a distance</div>'; return; }
     var inc = incline(d);
     if (inc === null) { box.innerHTML = '<div class="empty">The height can\'t be more than the distance. Check the numbers.</div>'; return; }
-    var res = Ballistics.solve(r, [d], inc)[0];
+    var res = Ballistics.solve(r, [d], inc, state.cond)[0];
     if (!res.reached) { box.innerHTML = '<div class="empty">Out of range for this load</div>'; return; }
     var up = res.clicks >= 0;
     var dirWord = res.clicks === 0 ? 'NO CHANGE' : (up ? 'DIAL UP ▲' : 'DIAL DOWN ▼');
     var extra = '';
     if (Math.abs(inc) >= 0.1) {
-      var flat = Ballistics.solve(r, [d], 0)[0];
+      var flat = Ballistics.solve(r, [d], 0, state.cond)[0];
       extra += '<div class="hint">Angle ' + fmt(inc, 1) + '° · flat ground would be ' + fmt(flat.moa, 2) + ' MOA (' + flat.clicks + ' clicks)</div>';
     }
     if (!res.supersonic) extra += '<div class="warn">⚠ Bullet is subsonic here, so accuracy drops off.</div>';
@@ -463,7 +481,8 @@ if (typeof module !== 'undefined') module.exports = Ballistics;
   function renderChart() {
     var r = rifle(), step = +$('chartStep').value, max = +$('chartMax').value, ranges = [];
     for (var y = step; y <= max; y += step) ranges.push(y);
-    var rows = Ballistics.solve(r, ranges, 0);
+    var rows = Ballistics.solve(r, ranges, 0, state.cond);
+    $('chartCond').textContent = 'At ' + condSummary();
     $('chartBody').innerHTML = rows.map(function (o) {
       if (!o.reached) return '<tr><td>' + o.range + '</td><td colspan="4">—</td></tr>';
       return '<tr><td>' + o.range + '</td><td>' + fmt(o.moa, 2) + '</td><td class="clk">' + o.clicks +
@@ -488,12 +507,11 @@ if (typeof module !== 'undefined') module.exports = Ballistics;
   });
   function escapeHtml(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 
-  var fields = { name: 'f_name', mv: 'f_mv', weight: 'f_wt', bc: 'f_bc', model: 'f_model', zero: 'f_zero', sightHeight: 'f_sh', click: 'f_click', temp: 'f_temp', alt: 'f_alt' };
+  var fields = { name: 'f_name', mv: 'f_mv', weight: 'f_wt', bc: 'f_bc', model: 'f_model', zero: 'f_zero', sightHeight: 'f_sh', click: 'f_click' };
   function fillForm(i) {
-    var r = state.rifles[i] || { name: '', mv: '', weight: '', bc: '', model: 'G1', zero: 100, sightHeight: 1.5, click: 0.25, temp: null, alt: null };
+    var r = state.rifles[i] || { name: '', mv: '', weight: '', bc: '', model: 'G1', zero: 100, sightHeight: 1.5, click: 0.25 };
     Object.keys(fields).forEach(function (k) { $(fields[k]).value = r[k] === null || r[k] === undefined ? '' : r[k]; });
     $('delRifle').hidden = !(i < state.rifles.length && state.rifles.length > 1);
-    if (r.temp !== null || r.alt !== null) $('atmoDetails').open = true;
   }
   $('newRifle').addEventListener('click', function () {
     editing = state.rifles.length; fillForm(editing); $('f_name').focus();
@@ -504,7 +522,7 @@ if (typeof module !== 'undefined') module.exports = Ballistics;
       name: $('f_name').value.trim() || 'Rifle ' + (editing + 1),
       mv: num($('f_mv').value), weight: num($('f_wt').value), bc: num($('f_bc').value),
       model: $('f_model').value, zero: num($('f_zero').value), sightHeight: num($('f_sh').value),
-      click: num($('f_click').value), temp: num($('f_temp').value), alt: num($('f_alt').value)
+      click: num($('f_click').value)
     };
     if (!(r.mv > 300 && r.mv < 5000)) return toast('Check muzzle velocity');
     if (!(r.bc > 0.05 && r.bc < 1.5)) return toast('Check the BC');
@@ -523,6 +541,64 @@ if (typeof module !== 'undefined') module.exports = Ballistics;
     state.active = editing = 0;
     save(); renderRifleList(); fillForm(0); calc();
   });
+
+  // ---- conditions
+  // Matches Ballistics.atmosphere: a blank temperature means standard for the altitude.
+  function stdTemp() { return Math.round(59 - 0.00356616 * (state.cond.alt || 0)); }
+  function condSummary() {
+    var c = state.cond;
+    return (c.alt == null ? 'sea level' : Math.round(c.alt).toLocaleString() + ' ft') + ' · ' +
+      (c.temp == null ? stdTemp() + '°F (standard)' : Math.round(c.temp) + '°F');
+  }
+  function timeAgo(ms) {
+    var m = Math.round((Date.now() - ms) / 60000);
+    if (m < 1) return 'just now';
+    if (m < 60) return m + ' min ago';
+    if (m < 60 * 24) return Math.round(m / 60) + ' hr ago';
+    return Math.round(m / 1440) + ' days ago';
+  }
+  function renderCond(msg, isWarn) {
+    var c = state.cond, st = $('condStatus');
+    if (document.activeElement !== $('c_alt')) $('c_alt').value = c.alt == null ? '' : c.alt;
+    if (document.activeElement !== $('c_temp')) $('c_temp').value = c.temp == null ? '' : c.temp;
+    $('c_temp').placeholder = stdTemp();
+    var text = msg, warn = !!isWarn;
+    if (!text) {
+      if (c.src === 'gps' && c.at) {
+        text = 'Altitude from GPS · ±' + c.acc + ' ft · ' + timeAgo(c.at);
+        if (Date.now() - c.at > 6 * 3600000) { text += ' · Tap Use GPS again if you\'ve moved.'; warn = true; }
+      } else if (c.alt == null) {
+        text = 'Blank = sea level. Tap Use GPS at your hunting spot. It works with no signal.';
+      } else {
+        text = 'Altitude typed in by hand.';
+      }
+      if (c.temp == null) text += ' Temp blank = ' + stdTemp() + '°F, standard for this altitude.';
+    }
+    st.textContent = text;
+    st.className = 'cond-status' + (warn ? ' warn' : '');
+  }
+  $('c_alt').addEventListener('input', function () { state.cond.alt = num(this.value); state.cond.src = 'manual'; state.cond.at = null; save(); renderCond(); calc(); });
+  $('c_temp').addEventListener('input', function () { state.cond.temp = num(this.value); save(); renderCond(); calc(); });
+  $('useGps').addEventListener('click', function () {
+    var btn = this;
+    if (!('geolocation' in navigator)) return renderCond('This browser can\'t read location.', true);
+    btn.disabled = true; btn.textContent = '📍 Getting GPS fix…';
+    renderCond('Getting altitude. This can take up to 20 seconds the first time.');
+    navigator.geolocation.getCurrentPosition(function (pos) {
+      btn.disabled = false; btn.textContent = '📍 Use GPS altitude';
+      var c = pos.coords;
+      if (c.altitude == null) return renderCond('No altitude yet. Step into the open and try again.', true);
+      state.cond.alt = Math.round(c.altitude * 3.28084 / 10) * 10;
+      state.cond.acc = c.altitudeAccuracy == null ? '?' : Math.round(c.altitudeAccuracy * 3.28084);
+      state.cond.src = 'gps'; state.cond.at = Date.now();
+      save(); renderCond(); calc(); toast('Altitude ' + state.cond.alt.toLocaleString() + ' ft');
+    }, function (err) {
+      btn.disabled = false; btn.textContent = '📍 Use GPS altitude';
+      if (err.code === 1) renderCond('Location is blocked. Turn it on in iPhone Settings → Privacy & Security → Location Services → Safari Websites → While Using the App.', true);
+      else renderCond('Couldn\'t get a GPS fix. Step into the open and try again.', true);
+    }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
+  });
+  renderCond();
 
   calc();
   if (state.rifles.length === 1 && /edit me/.test(state.rifles[0].name)) showTab('rifle');

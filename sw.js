@@ -1,5 +1,5 @@
 // Caches the app so it runs with no signal. Bump VERSION when files change.
-var VERSION = 'moadial-v3';
+var VERSION = 'moadial-v4';
 var FILES = ['./', './index.html', './manifest.json', './icon-180.png', './icon-512.png'];
 
 self.addEventListener('install', function (e) {
